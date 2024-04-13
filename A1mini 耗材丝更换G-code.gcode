@@ -1,8 +1,6 @@
 ;===== machine: A1 mini ====================
-;===== date: 2024412 ======================
+;===== date: 2024414 ======================
 ;===== YBA-AMS v1.4 ========================
-;2024413 Tshine - Grant the max power to the x-axis motor when cutting the filament.
-;2024414 Tshine - fix the first-layer filament change not working
 
 G392 S0
 M1007 S0
