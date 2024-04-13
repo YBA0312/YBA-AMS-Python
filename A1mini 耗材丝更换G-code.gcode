@@ -1,13 +1,14 @@
 ;===== machine: A1 mini ====================
 ;===== date: 2024412 ======================
 ;===== YBA-AMS v1.4 ========================
-;2024414 Tshine - Grant the max power to the x-axis motor when cutting the filament.
+;2024413 Tshine - Grant the max power to the x-axis motor when cutting the filament.
+;2024414 Tshine - fix the first-layer filament change not working
 
 G392 S0
 M1007 S0
 
 M204 S9000
-;{if toolchange_count > 1}
+{if toolchange_count > 0}
 G17
 G2 Z{max_layer_z + 0.4} I0.86 J0.86 P1 F10000 ; spiral lift a little from second lift
 G1 Z{max_layer_z + 3.0} F1200
@@ -198,7 +199,7 @@ M204 S[default_acceleration]
 G1 X[x_after_toolchange] Y[y_after_toolchange] Z[z_after_toolchange] F12000
 {endif}
 
-;{endif}
+{endif}
 
 M620 S[next_extruder]A
 T[next_extruder]
@@ -206,4 +207,3 @@ M621 S[next_extruder]A
 
 G392 S0
 M1007 S1
- 
