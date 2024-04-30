@@ -8,7 +8,7 @@ import os
 
 import paho.mqtt.client as mqtt
 
-DETAIL = False
+DETAIL = True
 DEBUG = True
 sys.stdout = sys.stderr
 
@@ -30,7 +30,7 @@ instances = []
 # G1 E-2 F500
 # G1 X180 F3000
 ################## 以上为用户配置区 ##################
-channel_transport_timeout = 5
+channel_transport_timeout = 30
 rollback_time = 2
 # 定义服务器信息和认证信息
 TCP_PORT = 3333
@@ -207,6 +207,7 @@ def close_broadcast(server_ip, port):
 def ams_control(ch, fx):
     ams_sock = None
     ip = ""
+    # print(f"{ch}")
     data = ams_head + bytes([ch]) + bytes([fx])
     while True:
         try:
@@ -327,8 +328,22 @@ def on_message(client, userdata, message):
                                 print("无需更换")
                                 publish_resume(client) # 继续打印
                                 return
-                            
-                            ams_control(filament_current, 2) # 抽回当前通道
+                            # 提前抽出所有通道
+                            for j in range(len(instances)):
+                                print(f"尝试抽出第{instances[j].index}通道")
+                                ams_control(int(instances[j].index), 2)
+                                time.sleep(rollback_time)
+                                ams_control(int(instances[j].index), 0) 
+                            for i in range(3):
+                                print(f"尝试第{i}次退料")
+                                ams_control(filament_current, 2)
+                                time.sleep(rollback_time)
+                                ams_control(filament_current, 0) 
+                                ams_control(filament_current, 1) 
+                                time.sleep(rollback_time)
+                                ams_control(filament_current, 0) 
+                            ams_control(filament_current, 2)
+
                             publish_gcode(client, "G1 E-25 F500\nM109 S" + F_CG_T + "\n") # 抽回一段距离，提前升温
 
                             if USE_PRINTER_UNLOAD:
@@ -347,20 +362,32 @@ def on_message(client, userdata, message):
                     filament_current = -1
                     time.sleep(1)
                     print(f"输送通道{filament_next}")
+                    # 提前抽出所有通道
+                    for j in range(len(instances)):
+                        print(f"尝试抽出第{instances[j].index}通道")
+                        ams_control(int(instances[j].index), 2)
+                        time.sleep(rollback_time)
+                        ams_control(int(instances[j].index), 0) 
                     ams_control(filament_next, 1) # 输送下一个通道
+                    step = 3
                     time.sleep(channel_transport_timeout)
                     print(f"输送通道{filament_next}超时，停止输送")
-                    ams_control(filament_next, 0)
-                    step = 3
+                    # ams_control(filament_next, 0)
         elif step == 2.5:
             if DEBUG:
                 print(f"当前步骤{step}")
             print(f"输送通道{filament_next}")
+            # 提前抽出所有通道
+            for j in range(len(instances)):
+                print(f"尝试抽出第{instances[j].index}通道")
+                ams_control(int(instances[j].index), 2)
+                time.sleep(rollback_time)
+                ams_control(int(instances[j].index), 0) 
             ams_control(filament_next, 1)
-            time.sleep(channel_transport_timeout)
-            print(f"输送通道{filament_next}超时，停止输送")
-            ams_control(filament_next, 0)
             step = 3
+            time.sleep(channel_transport_timeout)
+            print(f"输送通道{filament_next}超时，停止输送,待检查进料状态")
+            # ams_control(filament_next, 0)
         elif step == 3:
             if DEBUG:
                 print(f"当前步骤{step}")          
@@ -376,45 +403,46 @@ def on_message(client, userdata, message):
                     time.sleep(5)
                     client.publish(TOPIC_PUBLISH, bambu_clear)
                     step = 1
+                    CH_DEF = filament_next
                     read_data = {"MQTT_SERVER": MQTT_SERVER, "PASSWORD": PASSWORD, "DEVICE_SERIAL": DEVICE_SERIAL, "F_CG_T": F_CG_T, "CH_DEF": CH_DEF, "USE_PRINTER_UNLOAD": USE_PRINTER_UNLOAD, "FILAMENT_AUTO_FILL": FILAMENT_AUTO_FILL}
                     write_json_file('config.json', read_data)
-            else:
-                if DEBUG:
-                  print("准备自动续料")          
-                if FILAMENT_AUTO_FILL: 
-                    if len(temp_channel) == len(instances) :
-                         print("请及时补充耗材")
-                    elif len(temp_channel) == len(instances) - 1 :
-                        print(f"恢复默认通道 {CH_DEF}")
-                        filament_current = find_channel(CH_DEF)
-                        ams_control(filament_current, 1)
-                        client.publish(TOPIC_PUBLISH, bambu_resume)
-                        time.sleep(5)
-                        client.publish(TOPIC_PUBLISH, bambu_clear)
-                        ams_control(filament_current, 1)
-                        step = 1        
-                    else:
-                        print("开始自动续料")          
-                        channel_filament_state[filament_next] = 0
-                        temp_channel.append(filament_next)
-                        temp_channel = list(set(temp_channel))
-                        if len(temp_channel) == len(instances) - 1 :
-                            print("耗材耗尽")          
-                            return
-                        print(f"等待通道{filament_next}送料超时，输送下一个通道 {filament_next + 1}")
-                        for j in range(len(temp_channel)):
-                            print(f"检查通道: {temp_channel}")  
-                            if (temp_channel[j] == filament_next + 1):
-                                print(f"无效通道:{filament_next + 1}")  
-                            else:
-                                filament_channel = find_channel(filament_next + 1) # 更换通道
-                                if (filament_channel == -1):
-                                    print("未找到对应AMS通道，或耗材已耗尽")
-                                    break
-                                print(f"下一个AMS通道: {filament_channel + 1}")  
-                                step = 2.5
-                                filament_next = filament_channel + 1
-                                return
+            # else:
+            #     if DEBUG:
+            #       print("准备自动续料")          
+            #     if FILAMENT_AUTO_FILL: 
+            #         if len(temp_channel) == len(instances) :
+            #              print("请及时补充耗材")
+            #         elif len(temp_channel) == len(instances) - 1 :
+            #             print(f"恢复默认通道 {CH_DEF}")
+            #             filament_current = find_channel(CH_DEF)
+            #             ams_control(filament_current, 1)
+            #             client.publish(TOPIC_PUBLISH, bambu_resume)
+            #             time.sleep(5)
+            #             client.publish(TOPIC_PUBLISH, bambu_clear)
+            #             ams_control(filament_current, 1)
+            #             step = 1        
+            #         else:
+            #             print("开始自动续料")          
+            #             channel_filament_state[filament_next] = 0
+            #             temp_channel.append(filament_next)
+            #             temp_channel = list(set(temp_channel))
+            #             if len(temp_channel) == len(instances) - 1 :
+            #                 print("耗材耗尽")          
+            #                 return
+            #             print(f"等待通道{filament_next}送料超时，输送下一个通道 {filament_next + 1}")
+            #             for j in range(len(temp_channel)):
+            #                 print(f"检查通道: {temp_channel}")  
+            #                 if (temp_channel[j] == filament_next + 1):
+            #                     print(f"无效通道:{filament_next + 1}")  
+            #                 else:
+            #                     filament_channel = find_channel(filament_next + 1) # 更换通道
+            #                     if (filament_channel == -1):
+            #                         print("未找到对应AMS通道，或耗材已耗尽")
+            #                         break
+            #                     print(f"下一个AMS通道: {filament_channel + 1}")  
+            #                     step = 2.5
+            #                     filament_next = filament_channel + 1
+            #                     return
                              
 
 
@@ -474,7 +502,14 @@ if filament_current == -1:
     print("未找到默认通道，将按通道顺序依次进料")
     step = 3
     filament_next = 0
+    filament_current = 0
 else:
+    # 提前抽出所有通道
+    for j in range(len(instances)):
+        print(f"尝试抽出第{instances[j].index}通道")
+        ams_control(int(instances[j].index), 2)
+        time.sleep(rollback_time)
+        ams_control(int(instances[j].index), 0) 
     ams_control(filament_current, 1)
 try:
     while True:
@@ -485,7 +520,6 @@ try:
                 for i in range(len(instances)):
                     print(f"{str(instances[i])}")
             if len(instances) > 0:
-                print("handle instance")
                 for i in range(len(instances)):
                     if (instances[i].sock == None): 
                         sock = connect_to_server(instances[i].ip, TCP_PORT, None)
