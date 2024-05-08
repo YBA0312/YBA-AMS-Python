@@ -403,8 +403,7 @@ def on_message(client, userdata, message):
                     time.sleep(5)
                     client.publish(TOPIC_PUBLISH, bambu_clear)
                     step = 1
-                    CH_DEF = filament_next
-                    read_data = {"MQTT_SERVER": MQTT_SERVER, "PASSWORD": PASSWORD, "DEVICE_SERIAL": DEVICE_SERIAL, "F_CG_T": F_CG_T, "CH_DEF": CH_DEF, "USE_PRINTER_UNLOAD": USE_PRINTER_UNLOAD, "FILAMENT_AUTO_FILL": FILAMENT_AUTO_FILL}
+                    read_data = {"MQTT_SERVER": MQTT_SERVER, "PASSWORD": PASSWORD, "DEVICE_SERIAL": DEVICE_SERIAL, "F_CG_T": F_CG_T, "CH_DEF": filament_next + 1, "USE_PRINTER_UNLOAD": USE_PRINTER_UNLOAD, "FILAMENT_AUTO_FILL": FILAMENT_AUTO_FILL}
                     write_json_file('config.json', read_data)
             # else:
             #     if DEBUG:
